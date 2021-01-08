@@ -1,9 +1,10 @@
-import io
+import os, io
 import math
 import numpy as np
 import tensorflow as tf
 import sonnet as snt
 import pdb
+import datetime
 
 class TFVer(object):
     def __init__(self, tf = None):
@@ -24,6 +25,30 @@ class TFVer(object):
     def minor(self):
         return self._minor
 
+
+class GPUConfig(snt.Module):
+    def __init__(self, verbose = False, name = "gpu_config"):
+        super(GPUConfig, self).__init__(name = name)
+        self._verbose = verbose
+
+    @snt.once
+    def _initialize(self):
+        self._gpus = tf.config.experimental.list_physical_devices('GPU')
+
+    def __call__(self, gpu):
+        self._initialize()
+        if self._gpus:
+            try:
+                assert type(gpu) == int, "Invalid GPU ID, must be integer: {}".format(type(gpu))
+                tf.config.experimental.set_visible_devices(self._gpus[gpu], 'GPU')
+                if self._verbose:
+                    logical_gpus = tf.config.experimental.list_logical_devices('GPU')
+                    print(len(self._gpus), "Physical GPUs,", len(logical_gpus), "Logical GPU")
+            except RuntimeError as e:
+                # Visible devices must be set before GPUs have been initialized
+                print(e)
+
+
 def get_batch_size(inputs, time_major = False):
     if time_major:
         batch_size = inputs.get_shape().with_rank_at_least(3)[1]
@@ -32,8 +57,11 @@ def get_batch_size(inputs, time_major = False):
 
     return batch_size
 
-class Activation:
-    def __init__(self, act = None, verbose = False):
+
+class Activation(snt.Module):
+    def __init__(self, act = None, verbose = False, name = "activation"):
+        super(Activation, self).__init__(name = name)
+
         if act == 'sigmoid':
             if verbose: print('Activation function: sigmoid')
             self._act = tf.sigmoid
@@ -56,6 +84,7 @@ class Activation:
     def __call__(self, x):
         return self._act(x)
 
+
 class Pool2D(snt.Module):
     def __init__(self, method, kernel_size, stride = 2, name = "pool2d"):
         super(Pool2D, self).__init__(name = name)
@@ -70,13 +99,15 @@ class Pool2D(snt.Module):
         else:
             return tf.nn.max_pool2d(x, self._kernel_size, self._stride, 'SAME')
 
+
 class Log(snt.Module):
     def __init__(self, base_dir, name = "log"):
         super(Log, self).__init__(name = name)
 
         # Sets up a timestamped log directory.
-        assert os.path.exists(base_dir), "Invalid base directory: {}".format(base_dir)
-        logdir = os.path.join(base_dir, datetime.now().strftime("%Y%m%d-%H%M%S"))
+        if not os.path.exists(base_dir):
+            os.makedirs(base_dir)
+        logdir = os.path.join(base_dir, datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
 
         # Creates a file writer for the log directory.
         self._file_writer = tf.summary.create_file_writer(logdir)
@@ -86,14 +117,14 @@ class Log(snt.Module):
         with self._file_writer.as_default():
             if type_ == 'image':
                 tf.summary.image(desc, data, step = step)
-
+        
 
 class Plot2Image(snt.Module):
     def __init__(self, name = "plot_2_image"):
         super(Plot2Image, self).__init__(name = name)
         self._buf = io.BytesIO()
 
-    def __calll__(self, plt):        
+    def __call__(self, plt, fig):        
         """Converts the matplotlib plot specified by 'figure' to a PNG image and
         returns it. The supplied figure is closed and inaccessible after this call."""
         # Save the plot to a PNG in memory.
@@ -102,7 +133,7 @@ class Plot2Image(snt.Module):
 
         # Closing the figure prevents it from being displayed directly inside
         # the notebook.
-        plt.close(figure)
+        plt.close(fig)
 
         self._buf.seek(0)
         # Convert PNG buffer to TF image
@@ -111,6 +142,7 @@ class Plot2Image(snt.Module):
         image = tf.expand_dims(image, 0)
 
         return image
+
 
 class DrawImage(snt.Module):
     def __init__(name = "draw_image"):
@@ -162,9 +194,9 @@ class Dropout(snt.Module):
         self._noise_shape = noise_shape
         self._seed = seed
 
-
     def __call__(self, inputs):
         return tf.layers.dropout(inputs, self._rate, training = self._training)
+
 
 class LossRegression(snt.Module):
     def __init__(self, name = "loss_regression"):
@@ -175,6 +207,7 @@ class LossRegression(snt.Module):
         loss = tf.reduce_mean(tf.squared_difference(logits, labels), name = 'loss')
             
         return loss
+
 
 class LossClassification(snt.Module):
     def __init__(self, num_classes, name = 'loss_classification'):
@@ -191,6 +224,7 @@ class LossClassification(snt.Module):
 
         return loss
 
+
 class ValRegression(snt.Module):
     def __init__(self, name = "val_regression"):
         super(ValRegression, self).__init__(name = name)
@@ -200,6 +234,7 @@ class ValRegression(snt.Module):
         loss = tf.sqrt(tf.reduce_mean(tf.squared_difference(logits, labels)), name = 'val_deviation')
 
         return loss
+
 
 class ValClassification(snt.Module):
     def __init__(self, name = "val_classification"):
@@ -213,6 +248,7 @@ class ValClassification(snt.Module):
         accuracy = tf.reduce_mean(tf.cast(prediction, tf.float32))
 
         return accuracy
+
 
 class TestRegression(snt.Module):
     def __init__(self, name = "test_regression"):
