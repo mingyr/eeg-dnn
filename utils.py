@@ -145,8 +145,8 @@ class Plot2Image(snt.Module):
 
 
 class DrawImage(snt.Module):
-    def __init__(name = "draw_image"):
-        super(DrawImage, log, self).__init__(name = name)
+    def __init__(log, name = "draw_image"):
+        super(DrawImage, self).__init__(name = name)
         self._log = log
         self._plot2image = Plot2Image()
 
@@ -185,6 +185,25 @@ class DrawImage(snt.Module):
         self._log('image', '', img, step)
 
 
+class Saver(snt.Module):
+    def __init__(self, module, checkpoint_root, checkpoint_name, name = "saver"):
+        super(Saver, self).__init__(name = name)
+        self._module = module
+
+        if not os.path.exists(checkpoint_root):
+            os.makedirs(checkpoint_root)
+        self._checkpoint_root = checkpoint_root
+        self._save_prefix = os.path.join(checkpoint_root, checkpoint_name)
+        self._checkpoint = tf.train.Checkpoint(module = module)
+
+    def restore(self):
+        latest = tf.train.latest_checkpoint(self._checkpoint_root)
+        if latest is not None:
+            self._checkpoint.restore(latest)
+
+    def __call__(self):
+        self._checkpoint.save(self._save_prefix)
+
 class Dropout(snt.Module):
     def __init__(self, rate = 0.5, training = True, 
                  noise_shape = None, seed = None, name = "Dropout"):
@@ -195,7 +214,57 @@ class Dropout(snt.Module):
         self._seed = seed
 
     def __call__(self, inputs):
-        return tf.layers.dropout(inputs, self._rate, training = self._training)
+        return tf.nn.dropout(inputs, self._rate, training = self._training)
+
+'''
+class PolynomialRegression(snt.Module):
+    def __init__(self, degree, include_bias = True, name = "polynomial_regression"):
+        super(PolynomialRegression, self).__init__(name = name)
+        self._degree = degree
+        self._include_bias = include_bias
+
+    @snt.once
+    def _initialize(self):
+        initial_coeffs = tf.random.normal([self._degree + 1])
+        if self._include_bias:
+            self._coeffs = [tf.Variable(tf.squeeze(tf.gather(initial_coeffs, i))) for i in range(self._degree + 1)]
+        else: 
+            self._coeffs = [tf.Variable(tf.squeeze(tf.gather(initial_coeffs, i))) for i in range(self._degree)]
+            self._coeffs.append(tf.Variable(0.0, trainable = False))
+
+        self._ini = tf.constant([0.0], dtype = tf.float32)
+
+    def __call__(self, x):
+        self._initialize()
+        y = tf.scan(lambda unused, v: tf.math.polyval(self._coeffs, v), x, self._ini)
+
+        return y
+'''
+
+
+class PolynomialRegression(snt.Module):
+    def __init__(self, degree, include_bias = True, name = "polynomial_regression"):
+        super(PolynomialRegression, self).__init__(name = name)
+        self._degree = degree
+        self._include_bias = include_bias
+
+    @snt.once
+    def _initialize(self):
+        initial_coeffs = tf.random.normal([self._degree + 1, 1])
+        self._coeffs = tf.Variable(initial_coeffs, name = "coeffs")
+
+    def __call__(self, x):
+        self._initialize()
+
+        if self._include_bias: 
+            polynormial_features = tf.concat([tf.math.pow(x, i) for i in range(self._degree + 1)], axis = -1)
+        else:
+            polynormial_features = tf.concat([tf.math.pow(x, i) for i in range(1, self._degree + 1)], axis = -1)
+            polynormial_features = tf.concat([tf.zeros_like(x), polynormial_features], axis = -1)
+
+        y = tf.linalg.matmul(polynormial_features, self._coeffs)
+
+        return y
 
 
 class LossRegression(snt.Module):
@@ -204,7 +273,7 @@ class LossRegression(snt.Module):
 
     def __call__(self, logits, labels):
         tf.debugging.assert_equal(tf.rank(labels), tf.rank(logits))
-        loss = tf.reduce_mean(tf.squared_difference(logits, labels), name = 'loss')
+        loss = tf.math.reduce_mean(tf.math.squared_difference(logits, labels), name = 'loss')
             
         return loss
 

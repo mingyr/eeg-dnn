@@ -108,3 +108,4 @@ output*/*
 .nfs*
 tmp
 *.bak
+*/output/
