@@ -31,11 +31,18 @@ X, y = GenSample()()
 degrees = [1, 4, 15]
 
 num_epochs = 10000
-# opt = snt.optimizers.SGD(learning_rate = 0.001)
-opt = snt.optimizers.Adam(learning_rate=0.01, beta1=0.)
+opt = snt.optimizers.SGD(learning_rate = 0.05)
 
 X_test = tf.linspace([0.0], [1.0], 100, axis = 0)
 fig = plt.figure(figsize= (12.8, 4.8))
+
+pt = 10
+plt.rc('font', size=pt)          # controls default text sizes
+plt.rc('axes', titlesize=pt)     # fontsize of the axes title
+plt.rc('axes', labelsize=pt)    # fontsize of the x and y labels
+plt.rc('xtick', labelsize=pt)    # fontsize of the tick labels
+plt.rc('ytick', labelsize=pt)    # fontsize of the tick labels
+plt.rc('legend', fontsize=pt)    # legend fontsize
 
 true_fun = lambda X: tf.math.cos(1.5 * np.pi * X)
 
@@ -45,24 +52,24 @@ for i in range(len(degrees)):
     # if i == 1: pdb.set_trace() 
 
     for _ in range(num_epochs):
-        with tf.GradientTape() as tape:
+        with tf.GradientTape(persistent = True) as tape:
             logits = model(X)
-            params = model.trainable_variables
-
             loss = utils.LossRegression()(logits, y)
-            grads = tape.gradient(loss, params)
-            opt.apply(grads, params)
+
+        params = model.trainable_variables
+        grads = tape.gradient(loss, params)
+        opt.apply(grads, params)
+
+    del tape
 
     print("\ndegree: {}, loss: {}".format(degrees[i], loss.numpy()))
 
     ax = fig.add_subplot(1, len(degrees), i+1)
-    y_poly_pred = model(X_test)
+    y_poly_pred = model(X_test, is_training = False)    
 
     plt.plot(X_test, y_poly_pred, label="Model")
     plt.plot(X_test, true_fun(X_test), label="True function")
     plt.scatter(X, y, edgecolor='b', s=20, label="Samples")
-    plt.xlabel("x")
-    plt.ylabel("y")
     plt.xlim((0, 1))
     plt.ylim((-2, 2))
     plt.legend(loc="best")
