@@ -216,53 +216,50 @@ class Dropout(snt.Module):
     def __call__(self, inputs):
         return tf.nn.dropout(inputs, self._rate, training = self._training)
 
-'''
+
 class PolynomialRegression(snt.Module):
-    def __init__(self, degree, include_bias = True, name = "polynomial_regression"):
+    def __init__(self, degree, include_bias = True, verbose = False, name = "polynomial_regression"):
         super(PolynomialRegression, self).__init__(name = name)
         self._degree = degree
         self._include_bias = include_bias
+        self._verbose = verbose
 
     @snt.once
     def _initialize(self):
-        initial_coeffs = tf.random.normal([self._degree + 1])
-        if self._include_bias:
-            self._coeffs = [tf.Variable(tf.squeeze(tf.gather(initial_coeffs, i))) for i in range(self._degree + 1)]
-        else: 
-            self._coeffs = [tf.Variable(tf.squeeze(tf.gather(initial_coeffs, i))) for i in range(self._degree)]
-            self._coeffs.append(tf.Variable(0.0, trainable = False))
-
-        self._ini = tf.constant([0.0], dtype = tf.float32)
-
-    def __call__(self, x):
-        self._initialize()
-        y = tf.scan(lambda unused, v: tf.math.polyval(self._coeffs, v), x, self._ini)
-
-        return y
-'''
-
-
-class PolynomialRegression(snt.Module):
-    def __init__(self, degree, include_bias = True, name = "polynomial_regression"):
-        super(PolynomialRegression, self).__init__(name = name)
-        self._degree = degree
-        self._include_bias = include_bias
-
-    @snt.once
-    def _initialize(self):
-        initial_coeffs = tf.random.normal([self._degree + 1, 1])
+        initial_coeffs = tf.random.normal([self._degree + 1, 1], stddev = 4.0)
         self._coeffs = tf.Variable(initial_coeffs, name = "coeffs")
 
-    def __call__(self, x):
+    @snt.once
+    def _training(self, x):
+        if self._include_bias:
+            self._polynormial_features = tf.concat([tf.math.pow(x, i) for i in range(self._degree + 1)], axis = -1)
+        else:
+            self._polynormial_features = tf.concat([tf.math.pow(x, i) for i in range(1, self._degree + 1)], axis = -1)
+            self._polynormial_features = tf.concat([tf.zeros_like(x), polynormial_features], axis = -1)
+
+        if self._verbose:
+            print("polynormial features of training: {}".format(self._polynormial_features))
+
+    @snt.once
+    def _test(self, x):
+        if self._include_bias:
+            self._polynormial_features = tf.concat([tf.math.pow(x, i) for i in range(self._degree + 1)], axis = -1)
+        else:
+            self._polynormial_features = tf.concat([tf.math.pow(x, i) for i in range(1, self._degree + 1)], axis = -1)
+            self._polynormial_features = tf.concat([tf.zeros_like(x), polynormial_features], axis = -1)
+
+        if self._verbose:
+            print("polynormial features of test: {}".format(self._polynormial_features))
+
+    def __call__(self, x, is_training = True):
         self._initialize()
 
-        if self._include_bias: 
-            polynormial_features = tf.concat([tf.math.pow(x, i) for i in range(self._degree + 1)], axis = -1)
+        if is_training:
+            self._training(x)
         else:
-            polynormial_features = tf.concat([tf.math.pow(x, i) for i in range(1, self._degree + 1)], axis = -1)
-            polynormial_features = tf.concat([tf.zeros_like(x), polynormial_features], axis = -1)
+            self._test(x)
 
-        y = tf.linalg.matmul(polynormial_features, self._coeffs)
+        y = tf.linalg.matmul(self._polynormial_features, self._coeffs)
 
         return y
 

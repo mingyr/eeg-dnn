@@ -92,8 +92,9 @@ for i in range(len(degrees)):
     plt.plot(X_test, true_fun(X_test), label="True function")
     plt.scatter(X, y, edgecolor='b', s=20, label="Samples")
     plt.xlim((0.0, 1.0))
-    plt.ylim((0.0, 4.0))
+    plt.ylim((1.0, 4.0))
     plt.legend(loc="best")
+    plt.title('Degree {}'.format(degrees[i]))
 
 fig.tight_layout()
 
